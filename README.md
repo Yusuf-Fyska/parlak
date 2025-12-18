@@ -23,7 +23,7 @@ CLI → Policy (allowlist + rate/budget) → Pipeline (Pass-0/1/2) → Probers �
 
 Ortak alanlar: `timestamp, asset, ip, confidence`; `port/owasp_id` ilgili indexte dolu, gerekirse null. Mapping önerisi: `asset` keyword, `ip` ip, `port` integer, `timestamp` date, `headers` flattened.
 
-## CLI
+## CLI / API
 
 ```bash
 python -m cli.main verify                # config + ES bağlantı testi, allowlist doğrulama
@@ -33,6 +33,16 @@ python -m cli.main report example.com    # ES veya local state’den bulguları 
 ```
 
 `--write-test-doc` ile `verify` deneme dokümanı yazabilir.
+
+API (FastAPI proxy, ES direkt açılmaz):
+```bash
+uvicorn api.server:app --host 0.0.0.0 --port 8000
+# POST /api/discover {"target": "example.com"}
+# POST /api/scan {"target": "example.com"}
+# GET  /api/report?asset=example.com
+# GET  /api/assets?query=ex
+# GET  /api/health
+```
 
 ## Proje Yapısı
 

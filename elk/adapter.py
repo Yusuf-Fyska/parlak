@@ -82,3 +82,20 @@ class ElasticsearchAdapter:
             return [h.get("_source", {}) for h in hits]
         except Exception:  # noqa: BLE001
             return []
+
+    def search_assets(self, query: str | None = None, size: int = 50) -> List[Dict]:
+        try:
+            if query:
+                es_query = {"query_string": {"query": f"*{query}*"}}
+            else:
+                es_query = {"match_all": {}}
+            res = self.client.search(
+                index="surface-assets",
+                size=size,
+                query=es_query,
+                sort=[{"timestamp": {"order": "desc"}}],
+            )
+            hits = res.get("hits", {}).get("hits", [])
+            return [h.get("_source", {}) for h in hits]
+        except Exception:  # noqa: BLE001
+            return []

@@ -3,9 +3,10 @@ Single-node orchestrator: inline pipeline execution with in-memory state
 and Elasticsearch bulk output. No queues, workers, Postgres or Redis.
 """
 
+import json
 import logging
 import time
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from core.authz_scope import is_authorized_target
 from core.config import settings
@@ -19,18 +20,58 @@ log = logging.getLogger(__name__)
 
 
 class Orchestrator:
-    def __init__(self):
+    def __init__(self) -> None:
         self.policy = PolicyEngine()
         self.state = StateManager()
         self.elk = ElasticsearchAdapter() if settings.elasticsearch_url else None
+        self.degraded = False
 
-    def _ensure_authorized(self, target: str):
+    def _ensure_authorized(self, target: str) -> None:
         if not is_authorized_target(target):
             raise ValueError(f"target {target} not in allowlist or allowlist missing")
 
-    def _emit(self, index: str, docs: List[Dict]):
+    @staticmethod
+    def _safe_asset_doc(asset_doc: Dict[str, Any], asset_hint: str | None = None) -> Dict[str, Any]:
+        """
+        Elasticsearch'e yazarken mapping/field-name sorunları çıkarsa
+        dokümanı "raw" altında güvenli şekilde saklamak için normalize eder.
+
+        - Üst düzeyde birkaç sabit alan bırakır.
+        - Ham dokümanı raw içine koyar (raw: object enabled:false gibi mappinglerle uyumlu).
+        - JSON serialize edilemeyen değerleri string'e çevirir.
+        """
+        def to_jsonable(obj: Any) -> Any:
+            try:
+                json.dumps(obj)
+                return obj
+            except Exception:
+                return str(obj)
+
+        # bazı yaygın anahtarlar (dokümanda varsa kullan)
+        asset = (
+            asset_doc.get("asset")
+            or asset_doc.get("target")
+            or asset_doc.get("domain")
+            or asset_hint
+        )
+
+        ip_val = asset_doc.get("ip") or asset_doc.get("ip_address") or asset_doc.get("ipv4")
+        domain_val = asset_doc.get("domain") or asset_doc.get("fqdn")
+
+        safe = {
+            "created_at": time.time(),
+            "asset": asset,
+            "domain": domain_val,
+            "ip": ip_val,
+            "raw": {k: to_jsonable(v) for k, v in (asset_doc or {}).items()},
+        }
+        return safe
+
+    def _emit(self, index: str, docs: List[Dict[str, Any]]) -> None:
         if not docs:
             return
+
+        # In-memory state
         if index == "surface-assets":
             self.state.record_assets(docs)
         elif index == "surface-open-ports":
@@ -39,19 +80,46 @@ class Orchestrator:
             self.state.record_signals(docs)
         elif index == "surface-web-findings":
             self.state.record_findings(docs)
-        if self.elk:
-            self.elk.bulk_index(index, docs)
 
-    def discover(self, target: str) -> Dict:
+        # Elasticsearch output
+        if not self.elk:
+            return
+
+        try:
+            self.elk.bulk_index(index, docs)
+            self.degraded = False
+        except Exception as e:
+            # Burada genelde BulkIndexError gelir; CLI bunu özet geçiyordu.
+            log.exception("ELK bulk_index failed | index=%s | err=%s", index, e)
+            self.degraded = True
+
+            # surface-assets için: dokümanı güvenli formata çevirip tekrar dene (tarama ölmesin)
+            if index == "surface-assets":
+                try:
+                    fallback_docs = [self._safe_asset_doc(d, asset_hint=str(d.get("asset") or d.get("target") or "")) for d in docs]
+                    log.warning("Retrying surface-assets with safe fallback docs (raw encapsulation).")
+                    self.elk.bulk_index(index, fallback_docs)
+                    self.degraded = False
+                except Exception as e2:
+                    log.exception("ELK fallback bulk_index also failed | index=%s | err=%s", index, e2)
+                    # burada raise etmiyoruz; pipeline akışı devam edebilsin
+                    self.degraded = True
+
+    def discover(self, target: str) -> Dict[str, Any]:
         self._ensure_authorized(target)
         state = TargetState(asset=target)
         profile, asset_doc = stages.pass0_fast_fingerprint(target, self.policy, state)
-        self._emit("surface-assets", [asset_doc])
-        return {"profile": profile.dict(), "asset_doc": asset_doc}
 
-    def scan(self, target: str) -> Dict:
+        # Debug görmek istersen aç:
+        # log.info("asset_doc=%s", json.dumps(asset_doc, ensure_ascii=False)[:4000])
+
+        self._emit("surface-assets", [asset_doc])
+        return {"profile": profile.dict(), "asset_doc": asset_doc, "degraded": self.degraded}
+
+    def scan(self, target: str) -> Dict[str, Any]:
         self._ensure_authorized(target)
         state = TargetState(asset=target)
+
         profile, asset_doc = stages.pass0_fast_fingerprint(target, self.policy, state)
         open_ports, open_docs = stages.pass1_l4_discovery(profile, self.policy, state)
         signals, findings = stages.pass2_web_signals(profile, open_ports, state)
@@ -59,28 +127,43 @@ class Orchestrator:
         self._emit("surface-assets", [asset_doc])
         self._emit("surface-open-ports", open_docs)
         self._emit("surface-owasp-signals", signals)
+
         finding_docs = [self._finding_to_doc(f) for f in findings]
         self._emit("surface-web-findings", finding_docs)
 
         return {
             "profile": profile.dict(),
             "asset_doc": asset_doc,
-            "open_ports": open_ports,
+            "open_ports_map": open_ports,
+            "open_ports": open_docs,
             "signals": signals,
             "findings": finding_docs,
+            "degraded": self.degraded,
         }
 
-    def report(self, asset: str) -> List[Dict]:
+    def report(self, asset: str) -> List[Dict[str, Any]]:
         if self.elk and asset:
             docs = self.elk.search_by_asset("surface-web-findings", asset, size=100)
             if docs:
                 return docs
         return self.state.list_findings(asset)
 
+    def list_assets(self, query: Optional[str] = None, size: int = 50) -> List[Dict[str, Any]]:
+        if self.elk:
+            docs = self.elk.search_assets(query=query, size=size)
+            if docs:
+                return docs
+        assets = self.state.assets
+        if query:
+            q = query.lower()
+            assets = [a for a in assets if q in str(a.get("asset", "")).lower() or q in str(a.get("ip", "")).lower()]
+        return assets[:size]
+
     def verify(self, write_test_doc: bool = False) -> Dict[str, bool]:
         allowlist_ok = bool(settings.allowlist_cidrs or settings.allowlist_domains)
         elk_ok = False
         test_doc_written = False
+
         if self.elk:
             elk_ok = self.elk.ping()
             if write_test_doc:
@@ -95,10 +178,11 @@ class Orchestrator:
                 }
                 self.elk.bulk_index("surface-assets", [test_doc])
                 test_doc_written = True
-        return {"allowlist": allowlist_ok, "elk": elk_ok, "test_doc_written": test_doc_written}
+
+        return {"allowlist": allowlist_ok, "elk": elk_ok, "test_doc_written": test_doc_written, "degraded": self.degraded}
 
     @staticmethod
-    def _finding_to_doc(f: Finding) -> Dict:
+    def _finding_to_doc(f: Finding) -> Dict[str, Any]:
         return {
             "timestamp": f.timestamp.isoformat(),
             "asset": f.asset,
