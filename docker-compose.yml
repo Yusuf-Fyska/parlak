@@ -1,0 +1,44 @@
+version: "3.9"
+services:
+  api:
+    build: .
+    command: ["python", "-m", "cli.main", "verify"]
+    environment:
+      ROLE: control
+      POSTGRES_URL: postgresql://postgres:postgres@db:5432/app
+      REDIS_URL: redis://redis:6379/0
+      SAFE_MODE: "1"
+    depends_on:
+      - db
+      - redis
+    networks:
+      - scan
+  worker:
+    build: .
+    command: ["python", "-m", "cli.main", "scan", "example.com", "--wait", "10"]
+    environment:
+      ROLE: worker
+      REDIS_URL: redis://redis:6379/0
+      SAFE_MODE: "1"
+    depends_on:
+      - redis
+    networks:
+      - scan
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
+    networks:
+      - scan
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    networks:
+      - scan
+networks:
+  scan: {}

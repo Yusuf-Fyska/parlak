@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>Single Node Surface Scanner Kurulum Rehberi</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; line-height: 1.5; }
+    code, pre { background: #f5f5f5; padding: 2px 4px; border-radius: 4px; }
+    pre { padding: 12px; overflow-x: auto; }
+    h1, h2 { color: #222; }
+    hr { margin: 24px 0; }
+    ul { margin-top: 4px; }
+  </style>
+</head>
+<body>
+<h1>Single Node Surface Scanner Kurulum Rehberi (ELK Doğrudan Yazım)</h1>
+<p>Tüm bileşenler tek sunucuda, Postgres/Redis olmadan, çıktılar doğrudan Elasticsearch’e bulk yazılır. SAFE_MODE=1 varsayılan (ham paket yok, exploit yok, brute-force yok). Allowlist dolu değilse tarama başlamaz.</p>
+<hr />
+
+<h2>OS hazırlığı (Ubuntu 22.04/24.04)</h2>
+<p><strong>Amaç:</strong> Temiz temel sistem.<br />
+<strong>Ne Kuruyorum:</strong> Güncellemeler, saat.</p>
+<pre><code>sudo apt update &amp;&amp; sudo apt upgrade -y
+sudo apt install -y tzdata
+timedatectl status
+</code></pre>
+<p><strong>Doğrulama:</strong> synchronized: yes.<br />
+<strong>Hata olursa:</strong> <code>sudo systemctl restart systemd-timesyncd</code>.</p>
+<hr />
+
+<h2>Paketler</h2>
+<p><strong>Amaç:</strong> Python, build araçları, git, SSL/HTTP araçları.<br />
+<strong>Ne Kuruyorum:</strong> python3, venv, pip, git, build-essential, curl, openssl.</p>
+<pre><code>sudo apt install -y python3 python3-venv python3-pip git build-essential curl openssl
+</code></pre>
+<p><strong>Doğrulama:</strong> <code>python3 --version</code>, <code>git --version</code>, <code>openssl version</code>.<br />
+<strong>Hata olursa:</strong> <code>sudo apt update</code> ve tekrar deneyin.</p>
+<hr />
+
+<h2>Repo klonlama</h2>
+<p><strong>Amaç:</strong> Kaynak kodu almak.<br />
+<strong>Ne Kuruyorum:</strong> surface-scanner dizini.</p>
+<pre><code>git clone PLACEHOLDER_REPO_URL surface-scanner
+cd surface-scanner
+</code></pre>
+<p><strong>Doğrulama:</strong> <code>ls</code> içinde <code>requirements.txt</code>, <code>cli/</code>, <code>pipeline/</code> görünmeli.<br />
+<strong>Hata olursa:</strong> Repo URL/erişim anahtarını kontrol et.</p>
+<hr />
+
+<h2>venv + requirements</h2>
+<p><strong>Amaç:</strong> İzole Python ortamı ve bağımlılıklar.<br />
+<strong>Ne Kuruyorum:</strong> .venv, pip paketleri.</p>
+<pre><code>python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+</code></pre>
+<p><strong>Doğrulama:</strong> <code>python -c "import elasticsearch; print('ok')"</code> → ok.<br />
+<strong>Hata olursa:</strong> Proxy/SSL engeli varsa trusted-host ile tekrar deneyin.</p>
+<hr />
+
+<h2>.env oluşturma</h2>
+<p><strong>Amaç:</strong> ELK + policy ayarları (allowlist zorunlu).<br />
+<strong>Ne Kuruyorum:</strong> .env dosyası.</p>
+<pre><code>cat &gt; .env &lt;&lt;'EOF'
+ELASTICSEARCH_URL=PLACEHOLDER_ELASTICSEARCH_URL
+ELASTICSEARCH_USER=PLACEHOLDER_USER
+ELASTICSEARCH_PASS=PLACEHOLDER_PASS
+# veya ELASTICSEARCH_API_KEY=PLACEHOLDER_KEY
+ELASTICSEARCH_VERIFY_CERTS=1
+ELASTICSEARCH_CA_CERT=PLACEHOLDER_CA_PATH  # yoksa boş bırak
+SAFE_MODE=1
+ALLOWLIST_CIDRS=PLACEHOLDER_CIDRS   # örn: 203.0.113.0/24,198.51.100.10/32
+ALLOWLIST_DOMAINS=PLACEHOLDER_DOMAINS  # örn: example.com,example.org
+TOP_PORTS_WEB=80,443,8080,8443,8000,3000,5000
+GLOBAL_CONCURRENCY=32
+PER_TARGET_CONCURRENCY=4
+SCAN_TIME_BUDGET_PER_TARGET=120
+VERIFY_WRITE_TEST_DOC=0
+JSON_CACHE_PATH=state-cache.json   # opsiyonel, istemezsen boş bırak
+EOF
+</code></pre>
+<p><strong>Doğrulama:</strong> <code>grep ALLOWLIST .env</code> dolu; <code>python -m cli.main verify</code>.<br />
+<strong>Hata olursa:</strong> ELASTICSEARCH_URL/cred veya allowlist formatını düzelt.</p>
+<hr />
+
+<h2>Elasticsearch bağlantı testi</h2>
+<p><strong>Amaç:</strong> ELK erişimini doğrulamak.<br />
+<strong>Ne Kuruyorum:</strong> Test erişim.</p>
+<pre><code>curl -u PLACEHOLDER_USER:PLACEHOLDER_PASS https://ELK_HOSTNAME:9200
+python -m cli.main verify
+# isteğe bağlı
+python -m cli.main verify --write-test-doc
+</code></pre>
+<p><strong>Doğrulama:</strong> curl 200 JSON; verify sonucu elk: true.<br />
+<strong>Hata olursa:</strong> Firewall/SSL/credential/CA yolu kontrol et.</p>
+<hr />
+
+<h2>Index template (Kibana Dev Tools)</h2>
+<p><strong>Amaç:</strong> surface-* indexleri için mapping.</p>
+<pre><code>{
+  "index_patterns": ["surface-*"],
+  "template": {
+    "mappings": {
+      "dynamic": "true",
+      "properties": {
+        "asset": { "type": "keyword" },
+        "ip": { "type": "ip" },
+        "port": { "type": "integer" },
+        "timestamp": { "type": "date" },
+        "owasp_id": { "type": "keyword" },
+        "confidence": { "type": "integer" },
+        "headers": { "type": "flattened" }
+      }
+    }
+  }
+}
+</code></pre>
+<p><strong>Doğrulama:</strong> <code>GET _index_template/surface-scanner-template</code>.<br />
+<strong>Hata olursa:</strong> Yetki/syntax düzelt.</p>
+<hr />
+
+<h2>İlk tarama</h2>
+<p><strong>Amaç:</strong> Uçtan uca discovery + scan.<br />
+<strong>Ne Kuruyorum:</strong> Pass-0/1/2 çalıştırma.</p>
+<pre><code>python -m cli.main discover example.com
+python -m cli.main scan example.com
+</code></pre>
+<p><strong>Doğrulama:</strong> CLI çıktısında surface-* bulk işlemleri hatasız.<br />
+<strong>Hata olursa:</strong> Allowlist’e hedefi ekle; ES bağlantısını yeniden test et.</p>
+<hr />
+
+<h2>ELK’de doğrulama sorguları (Kibana)</h2>
+<pre><code>GET surface-assets/_search
+{ "query": { "term": { "asset.keyword": "example.com" } }, "size": 5 }
+
+GET surface-open-ports/_search
+{ "query": { "term": { "asset.keyword": "example.com" } }, "size": 5 }
+
+GET surface-owasp-signals/_search
+{ "query": { "term": { "asset.keyword": "example.com" } }, "size": 5 }
+
+GET surface-web-findings/_search
+{ "query": { "term": { "asset.keyword": "example.com" } }, "size": 5 }
+</code></pre>
+<p><strong>Doğrulama:</strong> hits &gt; 0; timestamp/asset/ip/port/confidence dolu.<br />
+<strong>Hata olursa:</strong> index adı/auth/CA ayarlarını kontrol et.</p>
+<hr />
+
+<h2>CLI hızlı referans</h2>
+<pre><code>python -m cli.main verify                # config + ES connectivity (yazmaz, --write-test-doc ile yazar)
+python -m cli.main discover &lt;asset&gt;      # Pass-0, surface-assets
+python -m cli.main scan &lt;asset&gt;          # Pass-1 + Pass-2, open-ports + signals + web-findings
+python -m cli.main report &lt;asset&gt;        # ES veya local state’ten bulguları JSON
+</code></pre>
+<hr />
+
+<h2>Final Checklist</h2>
+<ul>
+  <li>.env dolu, SAFE_MODE=1, ALLOWLIST_* set.</li>
+  <li><code>python -m cli.main verify</code> → allowlist: true, elk: true.</li>
+  <li>Kibana template yüklendi (surface-scanner-template).</li>
+  <li>discover ve scan çalıştı, surface-* indexlerinde veri var.</li>
+  <li>report &lt;asset&gt; JSON döndürüyor.</li>
+  <li>(Opsiyonel) JSON_CACHE_PATH ile lokal cache yazılıyor.</li>
+</ul>
+</body>
+</html>
