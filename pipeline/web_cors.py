@@ -35,13 +35,20 @@ def analyze(ctx: Dict) -> List[Finding]:
                 owasp_id="Security Misconfiguration",
                 title=title,
                 description=title,
-                impact=impact,
-                recommendation=rec,
+                impact={"technical": impact, "business": "Account/data leakage riski"},
+                exploitability={
+                    "prerequisites": ["Victim logged in", "Browser honors credentials"],
+                    "attack_scenario": "Malicious site origin yansımasını kullanarak veri çeker",
+                },
+                reproduction={"curl": f"curl -X OPTIONS -H \"Origin: https://evil.example\" {url}"},
+                recommendation=[rec, "Wildcard yerine sabit origin listesi kullanın", "Credentials'ı kapatın"],
                 references=["https://cheatsheetseries.owasp.org/cheatsheets/CORS_Cheat_Sheet.html"],
                 evidence=ev,
                 confidence=90 if status and status < 400 else 60,
                 severity=severity,
                 scan_profile="pass2",
+                affected_assets=[ctx["asset"]],
+                owner_hint="backend / api gateway",
             )
         )
 

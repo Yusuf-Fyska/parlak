@@ -34,13 +34,17 @@ def analyze(ctx: Dict) -> List[Finding]:
                 owasp_id="Security Misconfiguration",
                 title="Teknoloji yığını sızdırıldı",
                 description="; ".join(stack),
-                impact="Stack bilgisi saldırgan için keşif sağlar.",
-                recommendation="Versiyon/headereye sınır koyun veya kaldırın.",
+                impact={"technical": "Stack bilgisi keşfi kolaylaştırır", "business": "Hedefli istismar yüzeyi artar"},
+                exploitability={"prerequisites": [], "attack_scenario": "Versiyon bilgisiyle CVE araştırması yapılır"},
+                reproduction={"curl": f"curl -I {url}"},
+                recommendation=["Versiyon/headereye sınır koyun veya kaldırın."],
                 evidence=ev,
                 references=[],
                 confidence=60,
                 severity="Low",
                 scan_profile="pass2",
+                affected_assets=[ctx["asset"]],
+                owner_hint="devops / web",
             )
         )
 

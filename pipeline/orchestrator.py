@@ -14,6 +14,7 @@ from core.models import Finding
 from core.state import StateManager
 from elk.adapter import ElasticsearchAdapter
 from pipeline import stages
+from pipeline import web_correlation
 from policy.policy_engine import PolicyEngine, TargetState
 
 log = logging.getLogger(__name__)
@@ -139,6 +140,7 @@ class Orchestrator:
         self._emit("surface-web-findings", finding_docs)
 
         summary = self._build_summary(findings, open_ports)
+        summary.update(web_correlation.correlate(findings))
 
         return {
             "profile": profile.dict(),
@@ -208,6 +210,8 @@ class Orchestrator:
             "title": f.title,
             "description": f.description,
             "impact": f.impact,
+            "exploitability": f.exploitability,
+            "reproduction": f.reproduction,
             "evidence": f.evidence.dict(),
             "severity": f.severity,
             "recommendation": f.recommendation,
@@ -216,6 +220,8 @@ class Orchestrator:
             "references": f.references,
             "finding_id": f.finding_id,
             "extra": f.extra,
+            "affected_assets": f.affected_assets,
+            "owner_hint": f.owner_hint,
         }
 
     @staticmethod

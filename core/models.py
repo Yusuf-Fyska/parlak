@@ -6,7 +6,7 @@ Lightweight to keep single-node mode simple: Asset -> IP/Port -> Service -> URL 
 from __future__ import annotations
 
 import datetime as dt
-from typing import List, Optional
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -46,9 +46,13 @@ class Finding(BaseModel):
     owasp_id: Optional[str] = None
     title: str
     description: str
-    impact: Optional[str] = None
-    recommendation: Optional[str] = None
+    impact: Optional[Dict[str, str]] = None
+    exploitability: Optional[Dict[str, Union[str, List[str]]]] = None
+    reproduction: Optional[Dict[str, str]] = None
+    recommendation: Union[str, List[str], None] = None
     references: List[str] = Field(default_factory=list)
+    affected_assets: List[str] = Field(default_factory=list)
+    owner_hint: Optional[str] = None
     evidence: Evidence = Field(default_factory=Evidence)
     confidence: int = Field(ge=0, le=100)
     severity: str

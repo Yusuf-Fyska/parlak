@@ -34,13 +34,17 @@ def analyze(ctx: Dict) -> List[Finding]:
                 owasp_id="Security Misconfiguration",
                 title=title,
                 description=title,
-                impact=impact,
-                recommendation=rec,
+                impact={"technical": impact, "business": "Yanlış metodlar suistimal edilebilir"},
+                exploitability={"prerequisites": [], "attack_scenario": "PUT/DELETE ile istenmeyen değişiklik yapılabilir"},
+                reproduction={"curl": f"curl -I {url}"},
+                recommendation=[rec],
                 evidence=ev,
                 references=[],
                 confidence=70,
                 severity=severity,
                 scan_profile="pass2",
+                affected_assets=[ctx["asset"]],
+                owner_hint="backend / proxy",
             )
         )
 

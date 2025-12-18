@@ -63,13 +63,17 @@ def analyze(ctx: Dict) -> List[Finding]:
                 owasp_id="Sensitive Data Exposure",
                 title=f"Exposed path {path}",
                 description=f"{path} herkese açık",
-                impact=impact,
-                recommendation=rec,
+                impact={"technical": impact, "business": "Kaynak kodu/anahtarlar sızabilir"},
+                exploitability={"prerequisites": [], "attack_scenario": "Saldırgan dosyayı indirip sırları elde eder"},
+                reproduction={"curl": f"curl -I {url}"},
+                recommendation=[rec],
                 evidence=ev,
                 references=[],
                 confidence=90,
                 severity=default_sev,
                 scan_profile="pass2",
+                affected_assets=[asset],
+                owner_hint="devops / web",
             )
         )
 

@@ -28,13 +28,17 @@ def analyze(ctx: Dict) -> List[Finding]:
                 owasp_id="Availability",
                 title=f"Upstream availability hatası ({status})",
                 description="CDN/Upstream yanıt veremedi.",
-                impact="Hizmet erişimi kısıtlı olabilir.",
-                recommendation="CDN/Origin sağlığını kontrol edin.",
+                impact={"technical": "Origin/edge kesinti", "business": "Hizmet kesintisi"},
+                exploitability={"prerequisites": [], "attack_scenario": "Doğrudan sömürü yok; gözlem amaçlı"},
+                reproduction={"curl": f"curl -I {url}"},
+                recommendation=["CDN/Origin sağlığını kontrol edin."],
                 evidence=ev,
                 references=[],
                 confidence=60,
                 severity="Low",
                 scan_profile="pass2",
+                affected_assets=[ctx["asset"]],
+                owner_hint="ops",
             )
         )
     return findings
