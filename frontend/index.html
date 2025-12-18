@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Surface Scanner Dashboard</title>
+  <style>
+    :root {
+      --bg: #0a101d;
+      --surface: #111b2d;
+      --surface-2: #0f1728;
+      --stroke: #1f2a3f;
+      --primary: #4ea1ff;
+      --success: #5cf2c7;
+      --warn: #f2c14e;
+      --error: #ff5c74;
+      --text: #e8edf5;
+      --muted: #9fb0c7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 20%, rgba(78,161,255,0.12), transparent 30%),
+                  radial-gradient(circle at 80% 10%, rgba(92,242,199,0.1), transparent 30%),
+                  var(--bg);
+      color: var(--text);
+      font-family: "Manrope", "Inter", system-ui, sans-serif;
+    }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .topbar {
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+    }
+    .title { margin: 0; font-size: 20px; letter-spacing: 0.4px; }
+    .muted { color: var(--muted); font-size: 13px; }
+    .input {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      background: #0d1729;
+      color: var(--text);
+      min-width: 220px;
+    }
+    .btn {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      color: #0a101d;
+      background: var(--primary);
+      transition: transform 0.08s ease, box-shadow 0.18s ease;
+      box-shadow: 0 8px 22px rgba(78,161,255,0.35);
+    }
+    .btn.secondary { background: transparent; color: var(--text); border: 1px solid var(--stroke); box-shadow: none; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .banner {
+      margin-top: 10px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--warn);
+      background: rgba(242,193,78,0.12);
+      color: var(--warn);
+      display: none;
+    }
+    .tabs { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
+    .tab {
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--stroke);
+      background: var(--surface-2);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .tab.active { border-color: var(--primary); color: var(--text); box-shadow: 0 8px 24px rgba(78,161,255,0.18); }
+    .section { display: none; margin-top: 14px; }
+    .section.active { display: block; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 10px 26px rgba(0,0,0,0.26);
+    }
+    .card h3 { margin: 0 0 8px; font-size: 16px; }
+    .pill { display: inline-block; padding: 5px 9px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid var(--stroke); color: var(--muted); font-size: 12px; }
+    .badge { display: inline-block; padding: 4px 8px; border-radius: 999px; font-size: 12px; }
+    .sev-critical { background: rgba(255,92,116,0.12); color: var(--error); border: 1px solid rgba(255,92,116,0.6); }
+    .sev-high { background: rgba(255,159,28,0.12); color: #ff9f1c; border: 1px solid rgba(255,159,28,0.6); }
+    .sev-medium { background: rgba(242,193,78,0.12); color: var(--warn); border: 1px solid rgba(242,193,78,0.6); }
+    .sev-low { background: rgba(92,242,199,0.12); color: var(--success); border: 1px solid rgba(92,242,199,0.6); }
+    .sev-info { background: rgba(78,161,255,0.12); color: var(--primary); border: 1px solid rgba(78,161,255,0.6); }
+    .confidence-bar {
+      height: 8px; border-radius: 6px; background: #1b2a42; overflow: hidden; margin-top: 6px;
+    }
+    .confidence-bar span { display: block; height: 100%; background: linear-gradient(90deg, var(--primary), var(--success)); }
+    .list { display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
+    .item {
+      padding: 10px 12px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--stroke);
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--text); }
+    th, td { padding: 6px 8px; border-bottom: 1px solid var(--stroke); }
+    th { text-align: left; color: var(--muted); }
+    .error-box {
+      background: rgba(255,92,116,0.12); border: 1px solid var(--error);
+      color: var(--error); padding: 10px; border-radius: 10px; margin-top: 10px;
+    }
+    @media (max-width: 720px) {
+      .topbar { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1 class="title">Surface Scanner</h1>
+        <div class="muted">API proxy → Elasticsearch (UI ES’ye bağlanmaz)</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; justify-content:flex-end;">
+        <input id="targetInput" class="input" placeholder="proudsec.com" />
+        <button class="btn" id="discoverBtn">Discover</button>
+        <button class="btn secondary" id="scanBtn">Scan</button>
+        <button class="btn secondary" id="reportBtn">Report</button>
+      </div>
+    </div>
+    <div id="banner" class="banner">Degraded: ES yazımı başarısız, local state ile devam ediliyor.</div>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="findings">Findings</div>
+      <div class="tab" data-tab="endpoints">Endpoints</div>
+      <div class="tab" data-tab="headers">Headers & Evidence</div>
+      <div class="tab" data-tab="assets">Assets</div>
+      <div class="tab" data-tab="settings">Settings</div>
+    </div>
+
+    <div id="overview" class="section active">
+      <div class="grid">
+        <div class="card">
+          <h3>Health</h3>
+          <div id="healthCards" class="grid" style="grid-template-columns: repeat(auto-fit, minmax(160px,1fr)); gap:8px;"></div>
+          <button class="btn secondary" id="healthBtn" style="margin-top:8px;">Health Check</button>
+        </div>
+        <div class="card">
+          <h3>Risk Meter</h3>
+          <div id="riskScore" style="font-size:32px; font-weight:800;">0</div>
+          <div class="confidence-bar" style="margin-top:10px;"><span id="riskBar" style="width:0%;"></span></div>
+          <div class="muted" id="riskLabel" style="margin-top:6px;">Henüz bulgu yok</div>
+        </div>
+        <div class="card">
+          <h3>Summary</h3>
+          <div id="summaryStats" class="muted">Henüz veri yok</div>
+        </div>
+      </div>
+      <div class="grid" style="margin-top:12px;">
+        <div class="card">
+          <h3>Severity Dağılımı</h3>
+          <div id="severityDist" class="muted">-</div>
+        </div>
+        <div class="card">
+          <h3>OWASP (Top 5)</h3>
+          <div id="owaspDist" class="muted">-</div>
+        </div>
+        <div class="card">
+          <h3>En Çok Etkilenen Portlar</h3>
+          <div id="portDist" class="muted">-</div>
+        </div>
+        <div class="card">
+          <h3>En Çok Tekrarlayan Başlıklar</h3>
+          <div id="titleDist" class="muted">-</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="findings" class="section">
+      <div class="card">
+        <h3>Bulgular</h3>
+        <div class="muted" style="margin-bottom:8px;">Filtreler</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+          <select id="sevFilter" class="input" style="width:140px;">
+            <option value="">Severity (hepsi)</option>
+            <option value="Critical">Critical</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <input id="owaspFilter" class="input" placeholder="OWASP category" style="width:180px;" />
+          <input id="portFilter" class="input" placeholder="Port (örn. 80)" style="width:120px;" />
+          <input id="searchFilter" class="input" placeholder="Başlık / URL / path" style="flex:1; min-width:200px;" />
+          <button class="btn secondary" id="applyFilters">Filtrele</button>
+        </div>
+        <div id="findingsList" class="list"></div>
+      </div>
+    </div>
+
+    <div id="endpoints" class="section">
+      <div class="card">
+        <h3>Discovered Paths</h3>
+        <div id="endpointTable" class="muted">Henüz veri yok</div>
+      </div>
+    </div>
+
+    <div id="headers" class="section">
+      <div class="card">
+        <h3>Security Headers</h3>
+        <div id="headerStatus" class="muted">Henüz veri yok</div>
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <h3>Kanıt (Örnek Header’lar)</h3>
+        <div id="evidenceTable" class="muted">Henüz veri yok</div>
+      </div>
+    </div>
+
+    <div id="assets" class="section">
+      <div class="card">
+        <h3>Assets</h3>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+          <input id="assetQuery" class="input" placeholder="ara (proud)" style="width:200px;" />
+          <button class="btn secondary" id="assetSearchBtn">Ara</button>
+        </div>
+        <div id="assetList" class="muted">Henüz veri yok</div>
+      </div>
+    </div>
+
+    <div id="settings" class="section">
+      <div class="card">
+        <h3>Ayarlar</h3>
+        <div class="muted">API URL (varsayılan http://localhost:8000)</div>
+        <input id="apiInput" class="input" style="width:100%; margin-top:8px;" />
+        <button class="btn secondary" id="saveApiBtn" style="margin-top:8px;">Kaydet</button>
+        <div class="muted" id="lastHealth" style="margin-top:6px;">Son kontrol: -</div>
+      </div>
+      <div class="card" style="margin-top:12px;">
+        <h3>Hata / Degraded</h3>
+        <div id="errorBox" class="error-box" style="display:none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const state = { api: localStorage.getItem("API_URL") || "http://localhost:8000", health: null, discover: null, scan: null, report: null };
+
+    const banner = document.getElementById("banner");
+    const apiInput = document.getElementById("apiInput");
+    apiInput.value = state.api;
+    const tabs = document.querySelectorAll(".tab");
+    tabs.forEach(t => t.onclick = () => {
+      tabs.forEach(x => x.classList.remove("active"));
+      document.querySelectorAll(".section").forEach(s => s.classList.remove("active"));
+      t.classList.add("active");
+      document.getElementById(t.dataset.tab).classList.add("active");
+    });
+
+    function statusDot(val) {
+      const color = val ? "var(--success)" : "var(--error)";
+      return `<span class="status-dot" style="background:${color};"></span>${val ? "Connected" : "Disconnected"}`;
+    }
+    function setHealthCards(data) {
+      const box = document.getElementById("healthCards");
+      const cards = [
+        { title:"Allowlist", val: data?.allowlist },
+        { title:"Elasticsearch", val: data?.elk },
+        { title:"Degraded", val: data?.degraded },
+      ];
+      box.innerHTML = cards.map(c => `
+        <div class="card" style="padding:10px;">
+          <div class="muted">${c.title}</div>
+          <div style="margin-top:4px;">${statusDot(!!c.val)}</div>
+        </div>
+      `).join("");
+      if (data?.degraded) { banner.style.display = "block"; } else { banner.style.display = "none"; }
+    }
+
+    function severityClass(sev) {
+      const s = (sev || "").toLowerCase();
+      if (s === "critical") return "sev-critical";
+      if (s === "high") return "sev-high";
+      if (s === "medium") return "sev-medium";
+      if (s === "low") return "sev-low";
+      return "sev-info";
+    }
+
+    function summarize(findings = []) {
+      const sevCount = { Critical:0, High:0, Medium:0, Low:0, Info:0 };
+      const owasp = {};
+      const ports = {};
+      const titles = {};
+      let riskSum = 0, riskWeight = 0;
+      const mapScore = sev => ({critical:100, high:80, medium:55, low:25, info:10}[sev.toLowerCase()] || 10);
+      findings.slice(0,20).forEach(f => {
+        const sev = (f.severity || "Info");
+        sevCount[sev] = (sevCount[sev] || 0) + 1;
+        if (f.owasp_id) owasp[f.owasp_id] = (owasp[f.owasp_id] || 0) + 1;
+        if (f.port) ports[f.port] = (ports[f.port] || 0) + 1;
+        if (f.title) titles[f.title] = (titles[f.title] || 0) + 1;
+        const sc = mapScore(sev);
+        riskSum += sc;
+        riskWeight += 1;
+      });
+      const risk = riskWeight ? Math.min(100, Math.round(riskSum / riskWeight + findings.length * 0.5)) : 0;
+      return { sevCount, owasp, ports, titles, risk };
+    }
+
+    function renderSummary(findings = []) {
+      const { sevCount, owasp, ports, titles, risk } = summarize(findings);
+      document.getElementById("riskScore").textContent = risk;
+      document.getElementById("riskBar").style.width = `${risk}%`;
+      document.getElementById("riskLabel").textContent = risk ? "İlk 20 bulguya göre hesaplandı" : "Henüz bulgu yok";
+      document.getElementById("summaryStats").innerHTML = `
+        Toplam bulgu: <strong>${findings.length}</strong><br/>
+        Critical/High/Medium/Low: ${sevCount.Critical||0}/${sevCount.High||0}/${sevCount.Medium||0}/${sevCount.Low||0}
+      `;
+      document.getElementById("severityDist").textContent = Object.entries(sevCount).map(([k,v]) => `${k}: ${v}`).join(" • ");
+      const top5 = obj => Object.entries(obj).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>`${k} (${v})`).join(" • ") || "-";
+      document.getElementById("owaspDist").textContent = top5(owasp);
+      document.getElementById("portDist").textContent = top5(ports);
+      document.getElementById("titleDist").textContent = top5(titles);
+    }
+
+    function findingCard(f) {
+      const url = f.url || "";
+      const port = f.port ? `:${f.port}` : "";
+      const sev = f.severity || "Info";
+      const conf = f.confidence ?? 0;
+      const recommendation = f.recommendation || "Konfigürasyonu gözden geçirip ilgili header/policy ekleyin.";
+      const shortDesc = f.description || f.title || "Bulgu";
+      return `
+        <div class="item">
+          <div style="display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap;">
+            <span class="badge ${severityClass(sev)}">${sev}</span>
+            <span class="pill">${f.owasp_id || f.owasp_category || "OWASP"}</span>
+          </div>
+          <div style="margin-top:6px; font-weight:700;">${f.title || "Bulgu"}</div>
+          <div class="muted" style="margin-top:4px;">Asset: ${f.asset || "-"} • URL: ${url || (f.ip ? f.ip + port : "-")} </div>
+          <div class="muted" style="margin-top:4px;">${shortDesc}</div>
+          <div class="muted" style="margin-top:4px;">Öneri: ${recommendation}</div>
+          <div class="muted" style="margin-top:4px;">Confidence: ${conf}</div>
+          <div class="confidence-bar"><span style="width:${conf}%;"></span></div>
+        </div>
+      `;
+    }
+
+    function renderFindings(findings = []) {
+      const list = document.getElementById("findingsList");
+      if (!findings.length) { list.innerHTML = `<div class="muted">Bulgu yok</div>`; return; }
+      list.innerHTML = findings.map(findingCard).join("");
+    }
+
+    function renderEndpoints(findings = []) {
+      const table = document.getElementById("endpointTable");
+      const paths = findings.filter(f => (f.title || "").toLowerCase().includes("discovered "));
+      if (!paths.length) { table.textContent = "Kayıt yok"; return; }
+      const rows = paths.map(p => {
+        const path = (p.url || "").split(p.asset || "")[1] || p.url || "-";
+        return `<tr><td>${path}</td><td>${p.port||"-"}</td><td>${p.severity||"Low"}</td><td>${p.description||""}</td></tr>`;
+      }).join("");
+      table.innerHTML = `<table><thead><tr><th>Path</th><th>Port</th><th>Risk</th><th>Açıklama</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderHeaders(findings = []) {
+      const headerBox = document.getElementById("headerStatus");
+      const evidenceBox = document.getElementById("evidenceTable");
+      const headersNeeded = ["content-security-policy", "strict-transport-security", "x-frame-options", "x-content-type-options", "referrer-policy"];
+      const summary = {};
+      findings.forEach(f => {
+        const ev = f.evidence || {};
+        const h = (ev.headers || ev.extra || {});
+        headersNeeded.forEach(k => {
+          const present = Object.keys(h).includes(k);
+          summary[k] = summary[k] || { present:0, missing:0, example:null };
+          if (present) { summary[k].present += 1; summary[k].example = summary[k].example || h[k]; } else { summary[k].missing += 1; }
+        });
+      });
+      headerBox.innerHTML = Object.keys(summary).length ? Object.entries(summary).map(([k,v]) => {
+        const status = v.missing > 0 ? `<span class="badge sev-medium">Missing</span>` : `<span class="badge sev-low">Present</span>`;
+        return `<div style="margin-bottom:6px;">${status} <strong>${k}</strong> • Present: ${v.present} • Missing: ${v.missing} ${v.example ? "<br/><span class='muted'>Örnek: "+v.example+"</span>" : ""}</div>`;
+      }).join("") : "Henüz veri yok";
+
+      const sample = findings.find(f => f.evidence && f.evidence.headers);
+      if (!sample) { evidenceBox.textContent = "Henüz veri yok"; return; }
+      const h = sample.evidence.headers;
+      const rows = Object.entries(h).map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+      evidenceBox.innerHTML = `<table><thead><tr><th>Header</th><th>Değer</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+
+    function renderAssets(list = []) {
+      const box = document.getElementById("assetList");
+      if (!list.length) { box.textContent = "Henüz veri yok"; return; }
+      const items = list.map(a => `<div class="item"><strong>${a.asset || "-"}</strong> • IP: ${a.ip || "-"} • Conf: ${a.confidence || "-"} • ${a.metadata?.note || ""}</div>`).join("");
+      box.innerHTML = items;
+    }
+
+    function applyFiltersAndRender() {
+      const sev = document.getElementById("sevFilter").value;
+      const owasp = document.getElementById("owaspFilter").value.toLowerCase();
+      const port = document.getElementById("portFilter").value;
+      const search = document.getElementById("searchFilter").value.toLowerCase();
+      let items = (state.report?.findings || state.scan?.findings || []);
+      items = items.filter(f => {
+        if (sev && (f.severity || "").toLowerCase() !== sev.toLowerCase()) return false;
+        if (owasp && !(f.owasp_id || "").toLowerCase().includes(owasp)) return false;
+        if (port && String(f.port || "") !== port) return false;
+        if (search && !((f.title||"").toLowerCase().includes(search) || (f.url||"").toLowerCase().includes(search))) return false;
+        return true;
+      });
+      renderFindings(items);
+    }
+
+    async function apiFetch(path, options = {}) {
+      const base = apiInput.value.trim() || state.api;
+      const res = await fetch(base + path, { headers:{ "Content-Type":"application/json" }, ...options });
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+      return res.json();
+    }
+
+    document.getElementById("saveApiBtn").onclick = () => { state.api = apiInput.value.trim(); localStorage.setItem("API_URL", state.api); };
+
+    document.getElementById("healthBtn").onclick = async () => {
+      try {
+        const data = await apiFetch("/api/health");
+        state.health = data;
+        setHealthCards(data);
+        document.getElementById("lastHealth").textContent = "Son kontrol: " + new Date().toLocaleTimeString();
+      } catch (e) {
+        document.getElementById("errorBox").style.display = "block";
+        document.getElementById("errorBox").textContent = "API’ye erişilemiyor. " + e.message;
+      }
+    };
+
+    document.getElementById("discoverBtn").onclick = async () => {
+      const target = document.getElementById("targetInput").value.trim();
+      if (!target) return alert("Target girin");
+      try {
+        const data = await apiFetch("/api/discover", { method:"POST", body: JSON.stringify({ target }) });
+        state.discover = data;
+        if (data.degraded) banner.style.display = "block";
+        alert("Discover tamamlandı");
+      } catch (e) {
+        document.getElementById("errorBox").style.display = "block";
+        document.getElementById("errorBox").textContent = "Discover hatası: " + e.message;
+      }
+    };
+
+    document.getElementById("scanBtn").onclick = async () => {
+      const target = document.getElementById("targetInput").value.trim();
+      if (!target) return alert("Target girin");
+      try {
+        const data = await apiFetch("/api/scan", { method:"POST", body: JSON.stringify({ target }) });
+        state.scan = data;
+        if (data.degraded) banner.style.display = "block";
+        renderSummary(data.findings || []);
+        renderFindings(data.findings || []);
+        renderEndpoints(data.findings || []);
+        renderHeaders(data.findings || []);
+        alert("Scan tamamlandı");
+      } catch (e) {
+        document.getElementById("errorBox").style.display = "block";
+        document.getElementById("errorBox").textContent = "Scan hatası: " + e.message;
+      }
+    };
+
+    document.getElementById("reportBtn").onclick = async () => {
+      const target = document.getElementById("targetInput").value.trim();
+      if (!target) return alert("Asset/target girin");
+      try {
+        const data = await apiFetch(`/api/report?asset=${encodeURIComponent(target)}`);
+        state.report = data;
+        renderSummary(data.findings || []);
+        renderFindings(data.findings || []);
+        renderEndpoints(data.findings || []);
+        renderHeaders(data.findings || []);
+        alert("Report alındı");
+      } catch (e) {
+        document.getElementById("errorBox").style.display = "block";
+        document.getElementById("errorBox").textContent = "Report hatası: " + e.message;
+      }
+    };
+
+    document.getElementById("applyFilters").onclick = applyFiltersAndRender;
+
+    document.getElementById("assetSearchBtn").onclick = async () => {
+      const q = document.getElementById("assetQuery").value;
+      try {
+        const data = await apiFetch(`/api/assets?query=${encodeURIComponent(q||"")}&size=50`);
+        renderAssets(data.assets || []);
+      } catch (e) {
+        document.getElementById("assetList").textContent = "Asset arama hatası: " + e.message;
+      }
+    };
+  </script>
+</body>
+</html>

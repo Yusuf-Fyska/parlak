@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <title>Surface Scanner — Windows Kurulum & UI Başlatma</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --surface: #111b2d;
+      --stroke: #1f2a3f;
+      --primary: #4ea1ff;
+      --accent: #5cf2c7;
+      --text: #e8edf5;
+      --muted: #9fb0c7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at 20% 20%, rgba(78,161,255,0.16), transparent 30%),
+                  radial-gradient(circle at 80% 10%, rgba(92,242,199,0.14), transparent 30%),
+                  var(--bg);
+      color: var(--text);
+      font-family: "Manrope", "Inter", system-ui, sans-serif;
+      padding: 28px;
+      line-height: 1.6;
+    }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    h2 { margin: 0 0 10px; font-size: 20px; }
+    h3 { margin: 0 0 8px; font-size: 16px; }
+    p { margin: 0 0 10px; color: var(--muted); }
+    .wrap { max-width: 1100px; margin: 0 auto; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--stroke);
+      border-radius: 16px;
+      padding: 18px 20px;
+      margin-bottom: 14px;
+      box-shadow: 0 14px 32px rgba(0,0,0,0.28);
+    }
+    .badge { display: inline-block; padding: 6px 10px; border-radius: 10px; background: rgba(78,161,255,0.16); color: var(--text); border: 1px solid rgba(78,161,255,0.4); font-size: 12px; margin-bottom: 10px; }
+    code, pre { background: #0f1a2f; border: 1px solid #1e2c46; border-radius: 10px; color: #c7defc; }
+    code { padding: 2px 6px; font-size: 13px; }
+    pre { padding: 12px; overflow-x: auto; }
+    ul { margin: 8px 0 12px 18px; color: var(--muted); }
+    li { margin-bottom: 6px; }
+    .step-title { display: flex; gap: 10px; align-items: center; font-weight: 700; color: var(--text); }
+    .pill { padding: 3px 8px; border-radius: 8px; background: rgba(255,255,255,0.08); font-size: 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Surface Scanner — Windows Kurulum & UI Başlatma</h1>
+    <p>API proxy (FastAPI) → Elasticsearch; UI hiçbir zaman ES’ye direkt bağlanmaz. Bu rehberle hem backend’i hem tek sayfa frontend’i açacaksınız.</p>
+
+    <div class="card">
+      <div class="badge">Önkoşullar</div>
+      <ul>
+        <li>Windows 10/11 + PowerShell</li>
+        <li>Python 3.10+ (API)</li>
+        <li>.env’de ELASTICSEARCH_URL, kullanıcı/şifre veya API key, allowlist dolu</li>
+        <li>Tarayıcı (Edge/Chrome) — frontend için</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="step-title">1) API’yi çalıştır (FastAPI + uvicorn)</div>
+      <pre><code># Proje kökünde PowerShell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install --upgrade pip
+pip install -r requirements.txt
+
+# .env hazır (ELK + allowlist + SAFE_MODE)
+uvicorn api.server:app --host 0.0.0.0 --port 8000
+</code></pre>
+      <p class="pill">API portu 8000; frontend bu URL’e istek atacak.</p>
+    </div>
+
+    <div class="card">
+      <div class="step-title">2) Frontend’i aç (hazır tek sayfa)</div>
+      <p>`frontend/index.html` dosyası API’ya fetch ile bağlanır, ES’ye dokunmaz.</p>
+      <pre><code># Yeni bir PowerShell sekmesi
+cd frontend
+start index.html   # varsayılan tarayıcıda açılır
+</code></pre>
+      <p class="pill">Settings sekmesinden API URL’ini kontrol et/güncelle (varsayılan http://localhost:8000).</p>
+    </div>
+
+    <div class="card">
+      <div class="step-title">3) Sağlık ve hedef</div>
+      <ul>
+        <li>Settings → “Test Connection” (Health Check): allowlist/ELK/degraded durumunu gör.</li>
+        <li>Target alanına domain/IP yaz, Discover/Scan/Report butonlarını kullan.</li>
+        <li>UI kart/tablolar: risk özeti, bulgular, endpointler, header kanıtı; JSON göstermez.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="step-title">4) Sorun giderme</div>
+      <ul>
+        <li>API’ye erişilemiyor: uvicorn çalışıyor mu, port/URL doğru mu?</li>
+        <li>Allowlist hatası: .env’de ALLOWLIST_DOMAINS/CIDRS doldur.</li>
+        <li>ES TLS hatası: test için ELASTICSEARCH_VERIFY_CERTS=0; prod’da CA yolunu ELASTICSEARCH_CA_CERT ile ver.</li>
+        <li>Degraded banner: ES yazımı başarısız; local state ile gösterilir.</li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

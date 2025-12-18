@@ -6,7 +6,7 @@ decisions to the orchestrator/pipeline.
 
 import time
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from core.config import settings
 from policy.risk_scoring import RiskScore
@@ -21,6 +21,7 @@ class TargetState:
     depth: int = 0
     backoff_until: float = 0.0
     budget_s: int = settings.scan_time_budget_per_target
+    requests_made: int = 0
 
     def time_left(self) -> float:
         return max(0.0, self.budget_s - (time.time() - self.start_ts))
@@ -32,6 +33,16 @@ class PolicyEngine:
         self.per_target_tokens: Dict[str, int] = {}
         self.rate_limit_window_s = 1.0
         self.last_tick = time.time()
+        self.enabled_rules: Set[str] = set()  # empty => all enabled
+        self.max_requests_per_target: int = 40
+        self.sensitive_paths: List[str] = [
+            "/.git/HEAD",
+            "/.env",
+            "/wp-json/",
+            "/swagger",
+            "/openapi.json",
+            "/api-docs",
+        ]
 
     def _refresh_tokens(self):
         now = time.time()
@@ -55,6 +66,14 @@ class PolicyEngine:
     def is_backing_off(self, state: TargetState) -> bool:
         return time.time() < state.backoff_until
 
+    def can_request(self, state: TargetState) -> bool:
+        if state.requests_made >= self.max_requests_per_target:
+            return False
+        if state.time_left() <= 0:
+            return False
+        state.requests_made += 1
+        return True
+
     def choose_ports(self, state: TargetState, risk: RiskScore) -> List[int]:
         ports = list(settings.top_ports_web)
         if "ssh" in risk.hints:
@@ -67,3 +86,8 @@ class PolicyEngine:
 
     def should_expand(self, state: TargetState, risk: RiskScore) -> bool:
         return risk.score > 75 and state.time_left() > 20
+
+    def rule_enabled(self, rule_id: str) -> bool:
+        if not self.enabled_rules:
+            return True
+        return rule_id in self.enabled_rules

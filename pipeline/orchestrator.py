@@ -122,7 +122,14 @@ class Orchestrator:
 
         profile, asset_doc = stages.pass0_fast_fingerprint(target, self.policy, state)
         open_ports, open_docs = stages.pass1_l4_discovery(profile, self.policy, state)
-        signals, findings = stages.pass2_web_signals(profile, open_ports, state)
+        signals, findings = stages.pass2_web_intel(profile, open_ports, self.policy, state)
+        # dedupe by finding_id if present
+        uniq = {}
+        for f in findings:
+            key = f.finding_id or f.rule_id + str(f.url)
+            if key not in uniq:
+                uniq[key] = f
+        findings = list(uniq.values())
 
         self._emit("surface-assets", [asset_doc])
         self._emit("surface-open-ports", open_docs)
@@ -131,6 +138,8 @@ class Orchestrator:
         finding_docs = [self._finding_to_doc(f) for f in findings]
         self._emit("surface-web-findings", finding_docs)
 
+        summary = self._build_summary(findings, open_ports)
+
         return {
             "profile": profile.dict(),
             "asset_doc": asset_doc,
@@ -138,6 +147,7 @@ class Orchestrator:
             "open_ports": open_docs,
             "signals": signals,
             "findings": finding_docs,
+            "summary": summary,
             "degraded": self.degraded,
         }
 
@@ -192,13 +202,40 @@ class Orchestrator:
             "owasp_id": f.owasp_id or f.owasp_category,
             "service_guess": f.service_guess,
             "url": str(f.url) if f.url else None,
+            "normalized_url": f.normalized_url,
+            "rule_id": f.rule_id,
+            "category_bucket": f.category_bucket,
             "title": f.title,
             "description": f.description,
+            "impact": f.impact,
             "evidence": f.evidence.dict(),
             "severity": f.severity,
             "recommendation": f.recommendation,
             "scan_profile": f.scan_profile,
             "policy_params": f.policy_params,
+            "references": f.references,
+            "finding_id": f.finding_id,
+            "extra": f.extra,
+        }
+
+    @staticmethod
+    def _build_summary(findings: List[Finding], open_ports: Dict[str, Any]) -> Dict[str, Any]:
+        counts = {"Critical": 0, "High": 0, "Medium": 0, "Low": 0, "Info": 0}
+        owasp: Dict[str, int] = {}
+        ports = list(open_ports.keys())
+        for f in findings:
+            sev = f.severity.title() if f.severity else "Info"
+            counts[sev] = counts.get(sev, 0) + 1
+            if f.owasp_id:
+                owasp[f.owasp_id] = owasp.get(f.owasp_id, 0) + 1
+        top_owasp = sorted(owasp.items(), key=lambda x: x[1], reverse=True)[:5]
+        return {
+            "counts_by_severity": counts,
+            "top_owasp": [k for k, _ in top_owasp],
+            "ports_scanned": ports,
+            "ports_open": ports,
+            "time_spent_ms": {},
+            "degraded": False,
         }
 
 

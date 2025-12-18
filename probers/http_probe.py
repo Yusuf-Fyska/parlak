@@ -10,13 +10,15 @@ from typing import Dict, Optional, Tuple
 from core.config import settings
 
 
-def _do_request(method: str, host: str, port: int, use_ssl: bool, path: str = "/") -> Tuple[Dict, bytes]:
+def _do_request(method: str, host: str, port: int, use_ssl: bool, path: str = "/", extra_headers: Optional[Dict[str, str]] = None, body: bytes | None = None) -> Tuple[Dict, bytes]:
     timeout = settings.http_timeout_s
     conn_cls = http.client.HTTPSConnection if use_ssl else http.client.HTTPConnection
     context = ssl._create_unverified_context() if use_ssl else None
     conn = conn_cls(host, port, timeout=timeout, context=context) if use_ssl else conn_cls(host, port, timeout=timeout)
     headers = {"User-Agent": settings.user_agent}
-    conn.request(method, path, headers=headers)
+    if extra_headers:
+        headers.update(extra_headers)
+    conn.request(method, path, body=body, headers=headers)
     resp = conn.getresponse()
     data = resp.read(4096)
     headers_out = {k.lower(): v for k, v in resp.getheaders()}
@@ -37,3 +39,11 @@ def http_head(host: str, port: int, use_ssl: bool) -> Tuple[Dict, bytes]:
 
 def http_get(host: str, port: int, use_ssl: bool, path: str = "/") -> Tuple[Dict, bytes]:
     return _do_request("GET", host, port, use_ssl, path=path)
+
+
+def http_options(host: str, port: int, use_ssl: bool, path: str = "/", origin: str | None = None) -> Tuple[Dict, bytes]:
+    headers = {}
+    if origin:
+        headers["Origin"] = origin
+        headers["Access-Control-Request-Method"] = "GET"
+    return _do_request("OPTIONS", host, port, use_ssl, path=path, extra_headers=headers)
